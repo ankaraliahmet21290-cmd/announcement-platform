@@ -1,0 +1,25 @@
+# Build directories
+target/
+dist/
+build/
+node_modules/
+.npm/
+
+# IDE and Editors
+.idea/
+.vscode/
+*.swp
+*.iml
+.classpath
+.project
+.settings/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Env files
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
