@@ -13,11 +13,11 @@ export default defineConfig({
     port: 5174,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'https://announcement-platform-s582.onrender.com',
         changeOrigin: true,
       },
       '/uploads': {
-        target: 'http://localhost:8080',
+        target: 'https://announcement-platform-s582.onrender.com',
         changeOrigin: true,
       },
     },
