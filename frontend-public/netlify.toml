@@ -1,0 +1,13 @@
+# Bu dosyayı React projenin İÇİNE koy (örn: frontend/netlify.toml)
+# Netlify site ayarlarında "Base directory" olarak bu klasörü seç (örn: frontend)
+
+[build]
+  command = "npm run build"
+  publish = "dist"   # Vite kullanıyorsan "dist", CRA ise "build" yap
+
+# React Router gibi client-side routing kullanıyorsan
+# sayfa yenilendiğinde 404 almamak için bu redirect şart
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
