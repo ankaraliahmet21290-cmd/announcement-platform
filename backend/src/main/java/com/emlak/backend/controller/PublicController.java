@@ -59,12 +59,30 @@ public class PublicController {
             @RequestHeader(value = "X-Tenant-Slug", required = false) String headerSlug,
             @RequestParam(value = "slug", required = false) String paramSlug,
             @RequestParam(value = "listingType", required = false) ListingType listingType,
-            @RequestParam(value = "propertyType", required = false) PropertyType propertyType,
+            @RequestParam(value = "propertyType", required = false) List<PropertyType> propertyTypes,
             @RequestParam(value = "minPrice", required = false) BigDecimal minPrice,
             @RequestParam(value = "maxPrice", required = false) BigDecimal maxPrice,
+            @RequestParam(value = "minArea", required = false) Integer minArea,
+            @RequestParam(value = "maxArea", required = false) Integer maxArea,
+            @RequestParam(value = "minNetArea", required = false) Integer minNetArea,
+            @RequestParam(value = "maxNetArea", required = false) Integer maxNetArea,
             @RequestParam(value = "city", required = false) String city,
             @RequestParam(value = "district", required = false) String district,
-            @RequestParam(value = "roomCount", required = false) String roomCount,
+            @RequestParam(value = "neighborhood", required = false) String neighborhood,
+            @RequestParam(value = "roomCount", required = false) List<String> roomCounts,
+            @RequestParam(value = "buildingAge", required = false) List<String> buildingAges,
+            @RequestParam(value = "floor", required = false) List<String> floors,
+            @RequestParam(value = "totalFloor", required = false) List<String> totalFloors,
+            @RequestParam(value = "heatingType", required = false) List<String> heatingTypes,
+            @RequestParam(value = "deedStatus", required = false) List<String> deedStatuses,
+            @RequestParam(value = "usageStatus", required = false) List<String> usageStatuses,
+            @RequestParam(value = "bathroomCount", required = false) List<Integer> bathroomCounts,
+            @RequestParam(value = "suitableForLoan", required = false) Boolean suitableForLoan,
+            @RequestParam(value = "furnished", required = false) Boolean furnished,
+            @RequestParam(value = "hasElevator", required = false) Boolean hasElevator,
+            @RequestParam(value = "hasBalcony", required = false) Boolean hasBalcony,
+            @RequestParam(value = "hasParking", required = false) Boolean hasParking,
+            @RequestParam(value = "inSite", required = false) Boolean inSite,
             @RequestParam(value = "search", required = false) String search,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "12") int size,
@@ -76,7 +94,11 @@ public class PublicController {
         Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortBy));
 
         return ResponseEntity.ok(propertyService.getPublicProperties(
-                slug, listingType, propertyType, minPrice, maxPrice, city, district, roomCount, search, pageable
+                slug, listingType, propertyTypes, minPrice, maxPrice, minArea, maxArea,
+                minNetArea, maxNetArea, city, district, neighborhood, roomCounts, buildingAges,
+                floors, totalFloors, heatingTypes, deedStatuses, usageStatuses, bathroomCounts,
+                suitableForLoan, furnished, hasElevator, hasBalcony, hasParking, inSite,
+                search, pageable
         ));
     }
 

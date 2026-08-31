@@ -58,12 +58,30 @@ public class PropertyService {
     public Page<PropertySummaryResponse> getPublicProperties(
             String tenantSlug,
             ListingType listingType,
-            PropertyType propertyType,
+            List<PropertyType> propertyTypes,
             BigDecimal minPrice,
             BigDecimal maxPrice,
+            Integer minArea,
+            Integer maxArea,
+            Integer minNetArea,
+            Integer maxNetArea,
             String city,
             String district,
-            String roomCount,
+            String neighborhood,
+            List<String> roomCounts,
+            List<String> buildingAges,
+            List<String> floors,
+            List<String> totalFloors,
+            List<String> heatingTypes,
+            List<String> deedStatuses,
+            List<String> usageStatuses,
+            List<Integer> bathroomCounts,
+            Boolean suitableForLoan,
+            Boolean furnished,
+            Boolean hasElevator,
+            Boolean hasBalcony,
+            Boolean hasParking,
+            Boolean inSite,
             String search,
             Pageable pageable) {
 
@@ -78,8 +96,8 @@ public class PropertyService {
             if (listingType != null) {
                 predicates.add(cb.equal(root.get("listingType"), listingType));
             }
-            if (propertyType != null) {
-                predicates.add(cb.equal(root.get("propertyType"), propertyType));
+            if (propertyTypes != null && !propertyTypes.isEmpty()) {
+                predicates.add(root.get("propertyType").in(propertyTypes));
             }
             if (minPrice != null) {
                 predicates.add(cb.greaterThanOrEqualTo(root.get("price"), minPrice));
@@ -87,14 +105,87 @@ public class PropertyService {
             if (maxPrice != null) {
                 predicates.add(cb.lessThanOrEqualTo(root.get("price"), maxPrice));
             }
+            if (minArea != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("grossArea"), minArea));
+            }
+            if (maxArea != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("grossArea"), maxArea));
+            }
+            if (minNetArea != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("netArea"), minNetArea));
+            }
+            if (maxNetArea != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("netArea"), maxNetArea));
+            }
             if (StringUtils.hasText(city)) {
                 predicates.add(cb.like(cb.lower(root.get("city")), "%" + city.toLowerCase() + "%"));
             }
             if (StringUtils.hasText(district)) {
                 predicates.add(cb.like(cb.lower(root.get("district")), "%" + district.toLowerCase() + "%"));
             }
-            if (StringUtils.hasText(roomCount)) {
-                predicates.add(cb.equal(root.get("roomCount"), roomCount));
+            if (StringUtils.hasText(neighborhood)) {
+                predicates.add(cb.like(cb.lower(root.get("neighborhood")), "%" + neighborhood.toLowerCase() + "%"));
+            }
+            if (roomCounts != null && !roomCounts.isEmpty()) {
+                List<String> valid = roomCounts.stream().filter(StringUtils::hasText).collect(Collectors.toList());
+                if (!valid.isEmpty()) predicates.add(root.get("roomCount").in(valid));
+            }
+            if (buildingAges != null && !buildingAges.isEmpty()) {
+                List<String> valid = buildingAges.stream().filter(StringUtils::hasText).collect(Collectors.toList());
+                if (!valid.isEmpty()) predicates.add(root.get("buildingAge").in(valid));
+            }
+            if (floors != null && !floors.isEmpty()) {
+                List<String> valid = floors.stream().filter(StringUtils::hasText).collect(Collectors.toList());
+                if (!valid.isEmpty()) predicates.add(root.get("floor").in(valid));
+            }
+            if (totalFloors != null && !totalFloors.isEmpty()) {
+                List<String> valid = totalFloors.stream().filter(StringUtils::hasText).collect(Collectors.toList());
+                if (!valid.isEmpty()) {
+                    List<Predicate> tfPreds = new ArrayList<>();
+                    for (String tf : valid) {
+                        try { tfPreds.add(cb.equal(root.get("totalFloors"), Integer.parseInt(tf))); } catch (NumberFormatException ignored) {}
+                    }
+                    if (!tfPreds.isEmpty()) predicates.add(cb.or(tfPreds.toArray(new Predicate[0])));
+                }
+            }
+            if (heatingTypes != null && !heatingTypes.isEmpty()) {
+                List<String> valid = heatingTypes.stream().filter(StringUtils::hasText).collect(Collectors.toList());
+                if (!valid.isEmpty()) {
+                    List<Predicate> hp = new ArrayList<>();
+                    for (String h : valid) {
+                        hp.add(cb.like(cb.lower(root.get("heatingType")), "%" + h.toLowerCase() + "%"));
+                    }
+                    predicates.add(cb.or(hp.toArray(new Predicate[0])));
+                }
+            }
+            if (deedStatuses != null && !deedStatuses.isEmpty()) {
+                List<String> valid = deedStatuses.stream().filter(StringUtils::hasText).collect(Collectors.toList());
+                if (!valid.isEmpty()) predicates.add(root.get("deedStatus").in(valid));
+            }
+            if (usageStatuses != null && !usageStatuses.isEmpty()) {
+                List<String> valid = usageStatuses.stream().filter(StringUtils::hasText).collect(Collectors.toList());
+                if (!valid.isEmpty()) predicates.add(root.get("usageStatus").in(valid));
+            }
+            if (bathroomCounts != null && !bathroomCounts.isEmpty()) {
+                predicates.add(root.get("bathroomCount").in(bathroomCounts));
+            }
+            if (Boolean.TRUE.equals(suitableForLoan)) {
+                predicates.add(cb.equal(root.get("suitableForLoan"), true));
+            }
+            if (Boolean.TRUE.equals(furnished)) {
+                predicates.add(cb.equal(root.get("furnished"), true));
+            }
+            if (Boolean.TRUE.equals(hasElevator)) {
+                predicates.add(cb.equal(root.get("hasElevator"), true));
+            }
+            if (Boolean.TRUE.equals(hasBalcony)) {
+                predicates.add(cb.equal(root.get("hasBalcony"), true));
+            }
+            if (Boolean.TRUE.equals(hasParking)) {
+                predicates.add(cb.equal(root.get("hasParking"), true));
+            }
+            if (Boolean.TRUE.equals(inSite)) {
+                predicates.add(cb.equal(root.get("inSite"), true));
             }
             if (StringUtils.hasText(search)) {
                 String likeTerm = "%" + search.toLowerCase() + "%";

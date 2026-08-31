@@ -1,421 +1,241 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import api from '../api/client';
-import { PropertySummary, ListingType, PropertyType } from '../types';
-import {
-  Search,
-  Building2,
-  MapPin,
-  Maximize2,
-  Bed,
-  ArrowRight,
-  Filter,
-  X,
-  SlidersHorizontal,
-  ChevronLeft,
-  ChevronRight,
-} from 'lucide-react';
+import { PropertySummary } from '../types';
+import { Building2, MapPin, Maximize2, Bed, ArrowRight, Filter, X, SlidersHorizontal, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
+import { FilterSidebar } from '../components/FilterSidebar';
+
+const MULTI_KEYS = ['roomCounts','buildingAges','floors','totalFloors','heatingTypes','deedStatuses','usageStatuses','bathroomCounts','propertyTypes'];
+const BOOL_KEYS = ['suitableForLoan','furnished','hasElevator','hasBalcony','hasParking','inSite'];
+
+function paramsToValues(sp: URLSearchParams): Record<string, any> {
+  const v: Record<string, any> = {};
+  v['listingType'] = sp.get('type') || '';
+  v['city'] = sp.get('city') || '';
+  v['district'] = sp.get('district') || '';
+  v['neighborhood'] = sp.get('neighborhood') || '';
+  v['minPrice'] = sp.get('minPrice') || '';
+  v['maxPrice'] = sp.get('maxPrice') || '';
+  v['minArea'] = sp.get('minArea') || '';
+  v['maxArea'] = sp.get('maxArea') || '';
+  v['minNetArea'] = sp.get('minNetArea') || '';
+  v['maxNetArea'] = sp.get('maxNetArea') || '';
+  v['search'] = sp.get('search') || '';
+  MULTI_KEYS.forEach(k => { v[k] = sp.getAll(k.replace('Counts','Count').replace('Types','Type').replace('Statuses','Status').replace('propertyTypes','propertyType')); });
+  // fix mapping
+  v['roomCounts'] = sp.getAll('roomCount');
+  v['buildingAges'] = sp.getAll('buildingAge');
+  v['floors'] = sp.getAll('floor');
+  v['totalFloors'] = sp.getAll('totalFloor');
+  v['heatingTypes'] = sp.getAll('heatingType');
+  v['deedStatuses'] = sp.getAll('deedStatus');
+  v['usageStatuses'] = sp.getAll('usageStatus');
+  v['bathroomCounts'] = sp.getAll('bathroomCount');
+  v['propertyTypes'] = sp.getAll('propertyType');
+  BOOL_KEYS.forEach(k => { v[k] = sp.get(k) === 'true'; });
+  return v;
+}
+
+function valuesToParams(vals: Record<string, any>, sortBy: string, sortDir: string, page: number): URLSearchParams {
+  const p = new URLSearchParams();
+  if (vals['listingType']) p.set('type', vals['listingType']);
+  if (vals['city']) p.set('city', vals['city']);
+  if (vals['district']) p.set('district', vals['district']);
+  if (vals['neighborhood']) p.set('neighborhood', vals['neighborhood']);
+  if (vals['minPrice']) p.set('minPrice', vals['minPrice']);
+  if (vals['maxPrice']) p.set('maxPrice', vals['maxPrice']);
+  if (vals['minArea']) p.set('minArea', vals['minArea']);
+  if (vals['maxArea']) p.set('maxArea', vals['maxArea']);
+  if (vals['minNetArea']) p.set('minNetArea', vals['minNetArea']);
+  if (vals['maxNetArea']) p.set('maxNetArea', vals['maxNetArea']);
+  if (vals['search']) p.set('search', vals['search']);
+  (vals['propertyTypes'] || []).forEach((v: string) => p.append('propertyType', v));
+  (vals['roomCounts'] || []).forEach((v: string) => p.append('roomCount', v));
+  (vals['buildingAges'] || []).forEach((v: string) => p.append('buildingAge', v));
+  (vals['floors'] || []).forEach((v: string) => p.append('floor', v));
+  (vals['totalFloors'] || []).forEach((v: string) => p.append('totalFloor', v));
+  (vals['heatingTypes'] || []).forEach((v: string) => p.append('heatingType', v));
+  (vals['deedStatuses'] || []).forEach((v: string) => p.append('deedStatus', v));
+  (vals['usageStatuses'] || []).forEach((v: string) => p.append('usageStatus', v));
+  (vals['bathroomCounts'] || []).forEach((v: string) => p.append('bathroomCount', v));
+  BOOL_KEYS.forEach(k => { if (vals[k]) p.set(k, 'true'); });
+  p.set('sortBy', sortBy);
+  p.set('sortDir', sortDir);
+  p.set('page', String(page));
+  return p;
+}
+
+function countActive(vals: Record<string, any>): number {
+  let n = 0;
+  const skip = ['listingType','sortBy','sortDir','page'];
+  Object.entries(vals).forEach(([k, v]) => {
+    if (skip.includes(k)) return;
+    if (Array.isArray(v) && v.length > 0) n += v.length;
+    else if (!Array.isArray(v) && v && v !== '') n++;
+  });
+  return n;
+}
 
 export const PropertiesPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-
   const [properties, setProperties] = useState<PropertySummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
-  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // Filters State
-  const listingType = searchParams.get('type') || '';
-  const propertyType = searchParams.get('category') || '';
-  const city = searchParams.get('city') || '';
-  const district = searchParams.get('district') || '';
-  const minPrice = searchParams.get('minPrice') || '';
-  const maxPrice = searchParams.get('maxPrice') || '';
-  const roomCount = searchParams.get('roomCount') || '';
-  const searchWord = searchParams.get('search') || '';
   const sortBy = searchParams.get('sortBy') || 'createdAt';
   const sortDir = searchParams.get('sortDir') || 'DESC';
   const page = parseInt(searchParams.get('page') || '0', 10);
 
-  // Local Form Inputs State
-  const [localCity, setLocalCity] = useState(city);
-  const [localDistrict, setLocalDistrict] = useState(district);
-  const [localMinPrice, setLocalMinPrice] = useState(minPrice);
-  const [localMaxPrice, setLocalMaxPrice] = useState(maxPrice);
-  const [localSearch, setLocalSearch] = useState(searchWord);
-  const [localRoom, setLocalRoom] = useState(roomCount);
+  const [localVals, setLocalVals] = useState<Record<string, any>>(() => paramsToValues(searchParams));
+
+  useEffect(() => { setLocalVals(paramsToValues(searchParams)); }, [searchParams.toString()]);
 
   useEffect(() => {
-    setLocalCity(city);
-    setLocalDistrict(district);
-    setLocalMinPrice(minPrice);
-    setLocalMaxPrice(maxPrice);
-    setLocalSearch(searchWord);
-    setLocalRoom(roomCount);
-  }, [city, district, minPrice, maxPrice, searchWord, roomCount]);
-
-  const fetchProperties = async () => {
-    setLoading(true);
-    try {
-      const params: any = {
-        page,
-        size: 9,
-        sortBy,
-        sortDir,
-      };
-      if (listingType) params.listingType = listingType;
-      if (propertyType) params.propertyType = propertyType;
-      if (city) params.city = city;
-      if (district) params.district = district;
-      if (minPrice) params.minPrice = minPrice;
-      if (maxPrice) params.maxPrice = maxPrice;
-      if (roomCount) params.roomCount = roomCount;
-      if (searchWord) params.search = searchWord;
-
-      const res = await api.get('/public/properties', { params });
-      setProperties(res.data.content || []);
-      setTotalPages(res.data.totalPages || 0);
-      setTotalElements(res.data.totalElements || 0);
-    } catch (err) {
-      console.error('İlanlar alınamadı:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchProperties();
+    const fetch = async () => {
+      setLoading(true);
+      try {
+        const res = await api.get('/public/properties', { params: searchParams });
+        setProperties(res.data.content || []);
+        setTotalPages(res.data.totalPages || 0);
+        setTotalElements(res.data.totalElements || 0);
+      } catch (e) { console.error(e); }
+      finally { setLoading(false); }
+    };
+    fetch();
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [searchParams]);
+  }, [searchParams.toString()]);
 
-  const updateFilters = (updates: Record<string, string | null>) => {
-    const nextParams = new URLSearchParams(searchParams);
-    Object.entries(updates).forEach(([key, val]) => {
-      if (val === null || val === '') {
-        nextParams.delete(key);
-      } else {
-        nextParams.set(key, val);
-      }
-    });
-    nextParams.set('page', '0');
-    setSearchParams(nextParams);
+  const handleChange = (k: string, v: any) => setLocalVals(prev => ({ ...prev, [k]: v }));
+
+  const handleSubmit = () => {
+    setSearchParams(valuesToParams(localVals, sortBy, sortDir, 0));
+    setDrawerOpen(false);
   };
 
-  const handleApplyFilters = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateFilters({
-      city: localCity,
-      district: localDistrict,
-      minPrice: localMinPrice,
-      maxPrice: localMaxPrice,
-      roomCount: localRoom,
-      search: localSearch,
-    });
-    setMobileFilterOpen(false);
-  };
-
-  const handleClearFilters = () => {
-    setLocalCity('');
-    setLocalDistrict('');
-    setLocalMinPrice('');
-    setLocalMaxPrice('');
-    setLocalSearch('');
-    setLocalRoom('');
+  const handleClear = () => {
+    const empty: Record<string, any> = {};
+    setLocalVals(empty);
     setSearchParams(new URLSearchParams());
-    setMobileFilterOpen(false);
+    setDrawerOpen(false);
   };
 
-  const formatPrice = (price: number, currency: string) => {
-    return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 }).format(price) + ' ' + (currency === 'TRY' ? 'TL' : currency);
+  const updateSort = (sb: string, sd: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('sortBy', sb); next.set('sortDir', sd); next.set('page', '0');
+    setSearchParams(next);
   };
+
+  const updatePage = (p: number) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('page', String(p));
+    setSearchParams(next);
+  };
+
+  const formatPrice = (price: number, currency: string) =>
+    new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 }).format(price) + ' ' + (currency === 'TRY' ? 'TL' : currency);
+
+  const activeCount = countActive(localVals);
+  const listingType = searchParams.get('type') || '';
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-      {/* Top Banner / Breadcrumb */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      {/* Header */}
+      <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-            {listingType === 'SALE'
-              ? 'Satılık Gayrimenkul İlanları'
-              : listingType === 'RENT'
-              ? 'Kiralık Gayrimenkul İlanları'
-              : 'Tüm Gayrimenkul Portföyü'}
+          <div className="flex items-center space-x-2 text-xs text-sky-600 font-bold uppercase tracking-wider mb-1">
+            <Sparkles className="w-3.5 h-3.5" /><span>Portföy Arama & Filtreleme</span>
+          </div>
+          <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">
+            {listingType === 'SALE' ? 'Satılık' : listingType === 'RENT' ? 'Kiralık' : 'Tüm'} Gayrimenkul İlanları
           </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Toplam <span className="font-bold text-sky-600">{totalElements}</span> ilan listeleniyor.
+          <p className="text-xs text-slate-500 mt-0.5">
+            <span className="font-bold text-sky-600">{totalElements}</span> ilan eşleşti
           </p>
         </div>
-
-        {/* Sorting & Mobile Filter Toggle */}
-        <div className="flex items-center space-x-3 w-full md:w-auto">
-          <button
-            type="button"
-            onClick={() => setMobileFilterOpen(true)}
-            className="md:hidden flex-1 flex items-center justify-center space-x-2 py-2.5 px-4 bg-sky-50 text-sky-700 rounded-xl text-xs font-bold border border-sky-200"
-          >
+        <div className="flex items-center space-x-2 w-full sm:w-auto">
+          <button onClick={() => setDrawerOpen(true)} className="md:hidden flex-1 flex items-center justify-center space-x-2 py-2.5 px-4 bg-sky-50 text-sky-700 rounded-xl text-xs font-bold border border-sky-200">
             <SlidersHorizontal className="w-4 h-4" />
-            <span>Filtrele ({totalElements})</span>
+            <span>Filtrele {activeCount > 0 ? `(${activeCount})` : ''}</span>
           </button>
-
-          <select
-            value={`${sortBy}-${sortDir}`}
-            onChange={(e) => {
-              const [sb, sd] = e.target.value.split('-');
-              updateFilters({ sortBy: sb, sortDir: sd });
-            }}
-            className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
-          >
-            <option value="createdAt-DESC">En Yeni Eklenenler</option>
-            <option value="price-ASC">Fiyata Göre (Önce En Düşük)</option>
-            <option value="price-DESC">Fiyata Göre (Önce En Yüksek)</option>
-            <option value="viewCount-DESC">En Çok İncelenenler</option>
+          <select value={`${sortBy}|${sortDir}`} onChange={e => { const [sb,sd] = e.target.value.split('|'); updateSort(sb,sd); }}
+            className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500">
+            <option value="createdAt|DESC">En Yeni</option>
+            <option value="price|ASC">Fiyat ↑</option>
+            <option value="price|DESC">Fiyat ↓</option>
+            <option value="viewCount|DESC">En Çok Görüntülenen</option>
           </select>
         </div>
       </div>
 
-      {/* Main Grid Layout (Sidebar + Cards) */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-        {/* Desktop Filter Sidebar */}
-        <div className="hidden md:block md:col-span-1 space-y-6">
-          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-5 sticky top-28">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        {/* Desktop Sidebar */}
+        <div className="hidden md:block md:col-span-1">
+          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs sticky top-28">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <div className="flex items-center space-x-2">
                 <Filter className="w-4 h-4 text-sky-600" />
-                <h3 className="font-bold text-sm text-slate-900">Detaylı Filtreleme</h3>
+                <span className="font-extrabold text-sm text-slate-900">Detaylı Filtre</span>
               </div>
-              <button
-                type="button"
-                onClick={handleClearFilters}
-                className="text-[11px] text-slate-400 hover:text-red-600 font-semibold transition-colors"
-              >
-                Temizle
-              </button>
+              {activeCount > 0 && (
+                <button onClick={handleClear} className="text-[11px] text-red-500 hover:text-red-700 font-bold">Temizle</button>
+              )}
             </div>
-
-            <form onSubmit={handleApplyFilters} className="space-y-4 text-xs">
-              {/* İşlem Tipi */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1.5 uppercase tracking-wider text-[10px]">
-                  İşlem Tipi
-                </label>
-                <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-xl font-semibold">
-                  {[
-                    { key: '', label: 'Tümü' },
-                    { key: 'SALE', label: 'Satılık' },
-                    { key: 'RENT', label: 'Kiralık' },
-                  ].map((t) => (
-                    <button
-                      key={t.key}
-                      type="button"
-                      onClick={() => updateFilters({ type: t.key || null })}
-                      className={`py-1.5 rounded-lg text-center transition-colors ${
-                        listingType === t.key ? 'bg-white text-sky-600 shadow-xs' : 'text-slate-600'
-                      }`}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Kategori */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1.5 uppercase tracking-wider text-[10px]">
-                  Emlak Tipi
-                </label>
-                <select
-                  value={propertyType}
-                  onChange={(e) => updateFilters({ category: e.target.value || null })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                >
-                  <option value="">Tüm Tipler</option>
-                  <option value="RESIDENCE">Konut (Daire/Villa)</option>
-                  <option value="OFFICE">İşyeri / Plaza / Dükkan</option>
-                  <option value="LAND">Arsa / Arazi</option>
-                </select>
-              </div>
-
-              {/* Kelime Arama */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1.5 uppercase tracking-wider text-[10px]">
-                  Kelime / Başlık
-                </label>
-                <input
-                  type="text"
-                  value={localSearch}
-                  onChange={(e) => setLocalSearch(e.target.value)}
-                  placeholder="Caddebostan, Bahçeli..."
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                />
-              </div>
-
-              {/* İl / İlçe */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1.5 uppercase tracking-wider text-[10px]">
-                    İl
-                  </label>
-                  <input
-                    type="text"
-                    value={localCity}
-                    onChange={(e) => setLocalCity(e.target.value)}
-                    placeholder="İstanbul"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1.5 uppercase tracking-wider text-[10px]">
-                    İlçe
-                  </label>
-                  <input
-                    type="text"
-                    value={localDistrict}
-                    onChange={(e) => setLocalDistrict(e.target.value)}
-                    placeholder="Kadıköy"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Fiyat Aralığı */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1.5 uppercase tracking-wider text-[10px]">
-                  Fiyat Aralığı (TL)
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    type="number"
-                    value={localMinPrice}
-                    onChange={(e) => setLocalMinPrice(e.target.value)}
-                    placeholder="Min"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                  />
-                  <input
-                    type="number"
-                    value={localMaxPrice}
-                    onChange={(e) => setLocalMaxPrice(e.target.value)}
-                    placeholder="Max"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Oda Sayısı */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1.5 uppercase tracking-wider text-[10px]">
-                  Oda Sayısı
-                </label>
-                <select
-                  value={localRoom}
-                  onChange={(e) => setLocalRoom(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                >
-                  <option value="">Fark Etmez</option>
-                  <option value="1+1">1+1</option>
-                  <option value="2+1">2+1</option>
-                  <option value="3+1">3+1</option>
-                  <option value="4+1">4+1</option>
-                  <option value="5+1">5+1 ve üzeri</option>
-                </select>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl font-bold shadow-md shadow-sky-600/20 transition-colors"
-              >
-                Filtreleri Uygula
-              </button>
-            </form>
+            <FilterSidebar values={localVals} onChange={handleChange} onSubmit={handleSubmit} onClear={handleClear} />
           </div>
         </div>
 
-        {/* Properties Cards Grid (3 cols) */}
+        {/* Results */}
         <div className="md:col-span-3 space-y-6">
           {loading ? (
             <div className="flex items-center justify-center min-h-[400px]">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-sky-600"></div>
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-sky-600" />
             </div>
           ) : properties.length === 0 ? (
             <div className="bg-white p-12 rounded-3xl border border-slate-200 text-center space-y-3">
               <Building2 className="w-12 h-12 text-slate-300 mx-auto" />
-              <h3 className="text-base font-bold text-slate-800">Aramanıza Uygun İlan Bulunamadı</h3>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                Filtre kriterlerinizi genişleterek veya arama kelimesini değiştirerek tekrar deneyebilirsiniz.
-              </p>
-              <button
-                onClick={handleClearFilters}
-                className="mt-3 px-4 py-2 bg-sky-50 text-sky-700 font-bold rounded-xl text-xs hover:bg-sky-100"
-              >
+              <h3 className="text-base font-bold text-slate-800">İlan Bulunamadı</h3>
+              <p className="text-xs text-slate-500">Filtre kriterlerinizi genişleterek tekrar deneyebilirsiniz.</p>
+              <button onClick={handleClear} className="mt-2 px-4 py-2 bg-sky-50 text-sky-700 font-bold rounded-xl text-xs hover:bg-sky-100 transition-colors">
                 Filtreleri Temizle
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {properties.map((prop) => (
-                <Link
-                  key={prop.id}
-                  to={`/ilan/${prop.id}`}
-                  className="group bg-white rounded-3xl border border-slate-200/80 overflow-hidden shadow-xs hover:shadow-xl hover:border-sky-300 transition-all duration-300 flex flex-col justify-between"
-                >
-                  <div>
-                    {/* Cover Image */}
-                    <div className="relative aspect-[16/10] overflow-hidden bg-slate-100">
-                      <img
-                        src={prop.coverImage || 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=600&auto=format&fit=crop&q=80'}
-                        alt={prop.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      />
-                      <div className="absolute top-3 left-3 flex items-center space-x-1.5">
-                        <span className="px-2.5 py-0.5 bg-slate-950/80 backdrop-blur-md text-white text-[10px] font-bold rounded-lg">
-                          {prop.listingType === 'SALE' ? 'Satılık' : 'Kiralık'}
-                        </span>
-                        <span className="px-2.5 py-0.5 bg-sky-600 text-white text-[10px] font-semibold rounded-lg">
-                          {prop.propertyType === 'RESIDENCE' ? 'Konut' : prop.propertyType === 'OFFICE' ? 'İşyeri' : 'Arsa'}
-                        </span>
-                      </div>
-                      <div className="absolute bottom-3 left-3 px-3 py-1 bg-slate-950/85 backdrop-blur-md rounded-xl text-white font-extrabold text-xs">
-                        {formatPrice(prop.price, prop.currency)}
-                      </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {properties.map(prop => (
+                <Link key={prop.id} to={`/ilan/${prop.id}`}
+                  className="group bg-white rounded-3xl border border-slate-200/80 overflow-hidden shadow-xs hover:shadow-xl hover:border-sky-300 transition-all duration-300 flex flex-col">
+                  <div className="relative aspect-[16/10] overflow-hidden bg-slate-100">
+                    <img src={prop.coverImage || 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=600&auto=format&fit=crop&q=80'}
+                      alt={prop.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                    <div className="absolute top-3 left-3 flex items-center space-x-1.5">
+                      <span className="px-2.5 py-0.5 bg-slate-950/80 backdrop-blur-sm text-white text-[10px] font-bold rounded-lg">
+                        {prop.listingType === 'SALE' ? 'Satılık' : 'Kiralık'}
+                      </span>
+                      <span className="px-2.5 py-0.5 bg-sky-600 text-white text-[10px] font-semibold rounded-lg">
+                        {prop.propertyType === 'RESIDENCE' ? 'Konut' : prop.propertyType === 'OFFICE' ? 'İşyeri' : 'Arsa'}
+                      </span>
                     </div>
-
-                    {/* Card Content */}
-                    <div className="p-4 space-y-2.5">
-                      <div className="flex items-center space-x-1 text-xs text-slate-500 font-medium">
-                        <MapPin className="w-3.5 h-3.5 text-sky-600 shrink-0" />
-                        <span className="truncate">{prop.district} / {prop.city}</span>
-                      </div>
-
-                      <h3 className="font-bold text-slate-900 text-sm line-clamp-2 group-hover:text-sky-600 transition-colors leading-snug">
-                        {prop.title}
-                      </h3>
-
-                      {/* Specs */}
-                      <div className="grid grid-cols-2 gap-1 pt-2 border-t border-slate-100 text-[11px] text-slate-600">
-                        {prop.roomCount && (
-                          <div className="flex items-center space-x-1">
-                            <Bed className="w-3 h-3 text-slate-400" />
-                            <span>{prop.roomCount}</span>
-                          </div>
-                        )}
-                        {prop.grossArea && (
-                          <div className="flex items-center space-x-1">
-                            <Maximize2 className="w-3 h-3 text-slate-400" />
-                            <span>{prop.grossArea} m²</span>
-                          </div>
-                        )}
-                      </div>
+                    <div className="absolute bottom-3 left-3 px-3 py-1 bg-slate-950/85 backdrop-blur-sm rounded-xl text-white font-extrabold text-xs">
+                      {formatPrice(prop.price, prop.currency)}
                     </div>
                   </div>
-
-                  {/* Card Footer */}
-                  <div className="p-3 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                    <span className="text-slate-400 truncate max-w-[120px]">
-                      {prop.agentName || 'Yetkili Ofis'}
-                    </span>
+                  <div className="p-4 space-y-2 flex-1">
+                    <div className="flex items-center space-x-1 text-xs text-slate-500">
+                      <MapPin className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                      <span className="truncate">{prop.district} / {prop.city}</span>
+                    </div>
+                    <h3 className="font-bold text-slate-900 text-sm line-clamp-2 group-hover:text-sky-600 transition-colors leading-snug">{prop.title}</h3>
+                    <div className="grid grid-cols-2 gap-1 pt-2 border-t border-slate-100 text-[11px] text-slate-600">
+                      {prop.roomCount && <div className="flex items-center space-x-1"><Bed className="w-3.5 h-3.5 text-slate-400" /><span>{prop.roomCount}</span></div>}
+                      {prop.grossArea && <div className="flex items-center space-x-1"><Maximize2 className="w-3.5 h-3.5 text-slate-400" /><span>{prop.grossArea} m²</span></div>}
+                    </div>
+                  </div>
+                  <div className="px-4 py-2.5 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                    <span className="text-slate-400 truncate max-w-[120px]">{prop.agentName || 'Yetkili Ofis'}</span>
                     <span className="text-sky-600 font-bold group-hover:translate-x-1 transition-transform flex items-center space-x-0.5">
-                      <span>İncele</span>
-                      <ArrowRight className="w-3 h-3" />
+                      <span>İncele</span><ArrowRight className="w-3 h-3" />
                     </span>
                   </div>
                 </Link>
@@ -423,34 +243,21 @@ export const PropertiesPage: React.FC = () => {
             </div>
           )}
 
-          {/* Pagination Controls */}
+          {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-center space-x-2 pt-6">
-              <button
-                onClick={() => updateFilters({ page: (page - 1).toString() })}
-                disabled={page === 0}
-                className="p-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors"
-              >
+            <div className="flex items-center justify-center space-x-2 pt-4">
+              <button onClick={() => updatePage(page - 1)} disabled={page === 0}
+                className="p-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors">
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              {Array.from({ length: totalPages }, (_, i) => (
-                <button
-                  key={i}
-                  onClick={() => updateFilters({ page: i.toString() })}
-                  className={`w-9 h-9 rounded-xl text-xs font-bold transition-all ${
-                    page === i
-                      ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30'
-                      : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
+              {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => (
+                <button key={i} onClick={() => updatePage(i)}
+                  className={`w-9 h-9 rounded-xl text-xs font-bold transition-all ${page === i ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
                   {i + 1}
                 </button>
               ))}
-              <button
-                onClick={() => updateFilters({ page: (page + 1).toString() })}
-                disabled={page >= totalPages - 1}
-                className="p-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors"
-              >
+              <button onClick={() => updatePage(page + 1)} disabled={page >= totalPages - 1}
+                className="p-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors">
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
@@ -458,83 +265,23 @@ export const PropertiesPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Mobile Filters Drawer */}
-      {mobileFilterOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex justify-end md:hidden">
-          <div className="bg-white w-full max-w-xs h-full p-6 overflow-y-auto space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="font-bold text-base text-slate-900">Filtreleri Düzenle</h3>
-              <button onClick={() => setMobileFilterOpen(false)} className="p-1 text-slate-500">
+      {/* Mobile Drawer */}
+      {drawerOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex justify-end md:hidden">
+          <div className="bg-white w-full max-w-xs h-full overflow-y-auto">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100 sticky top-0 bg-white z-10">
+              <div className="flex items-center space-x-2">
+                <Filter className="w-4 h-4 text-sky-600" />
+                <h3 className="font-bold text-sm text-slate-900">Filtreler</h3>
+                {activeCount > 0 && <span className="px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-extrabold">{activeCount}</span>}
+              </div>
+              <button onClick={() => setDrawerOpen(false)} className="p-1.5 text-slate-500 hover:text-slate-700 rounded-lg hover:bg-slate-100">
                 <X className="w-5 h-5" />
               </button>
             </div>
-
-            <form onSubmit={handleApplyFilters} className="space-y-4 text-xs">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">İşlem Tipi</label>
-                <select
-                  value={listingType}
-                  onChange={(e) => updateFilters({ type: e.target.value || null })}
-                  className="w-full px-3 py-2 bg-slate-50 border rounded-xl"
-                >
-                  <option value="">Tümü</option>
-                  <option value="SALE">Satılık</option>
-                  <option value="RENT">Kiralık</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Kategori</label>
-                <select
-                  value={propertyType}
-                  onChange={(e) => updateFilters({ category: e.target.value || null })}
-                  className="w-full px-3 py-2 bg-slate-50 border rounded-xl"
-                >
-                  <option value="">Tüm Tipler</option>
-                  <option value="RESIDENCE">Konut</option>
-                  <option value="OFFICE">İşyeri</option>
-                  <option value="LAND">Arsa</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">İl</label>
-                <input
-                  type="text"
-                  value={localCity}
-                  onChange={(e) => setLocalCity(e.target.value)}
-                  placeholder="İstanbul"
-                  className="w-full px-3 py-2 bg-slate-50 border rounded-xl"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">İlçe</label>
-                <input
-                  type="text"
-                  value={localDistrict}
-                  onChange={(e) => setLocalDistrict(e.target.value)}
-                  placeholder="Kadıköy"
-                  className="w-full px-3 py-2 bg-slate-50 border rounded-xl"
-                />
-              </div>
-
-              <div className="pt-2 flex space-x-2">
-                <button
-                  type="button"
-                  onClick={handleClearFilters}
-                  className="flex-1 py-2.5 bg-slate-100 rounded-xl font-bold"
-                >
-                  Temizle
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 bg-sky-600 text-white rounded-xl font-bold"
-                >
-                  Uygula
-                </button>
-              </div>
-            </form>
+            <div className="p-4">
+              <FilterSidebar values={localVals} onChange={handleChange} onSubmit={handleSubmit} onClear={handleClear} />
+            </div>
           </div>
         </div>
       )}
